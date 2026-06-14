@@ -54,10 +54,38 @@ func main() {
 	env := &Env{db: db}
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("POST /notizie", env.addNews)
+	mux.HandleFunc("POST /api/notizie", env.addNews)
+	mux.HandleFunc("GET /api/notizie/titolo/{titolo}", env.getNewsByTitolo)
 
 	fmt.Printf("Identity Service (HTTP) pronto sulla porta %s\n", Port)
 	log.Fatal(http.ListenAndServe(Port, mux))
+}
+
+func (env *Env) getNewsByTitolo(w http.ResponseWriter, r *http.Request) {
+
+	titolo := r.PathValue("titolo")
+	if titolo == "" {
+		http.Error(w, "Titolo mancante nell'URL", http.StatusBadRequest)
+		return
+	}
+
+	query := "SELECT * FROM notizie WHERE titolo = $1"
+
+	var news Notizia
+	err := env.db.QueryRow(query, titolo).Scan(&news)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Notizia non trovata", http.StatusNotFound) // 404
+			return
+		}
+		http.Error(w, "Errore nella connesione al db", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(news)
+
 }
 
 func (env *Env) addNews(w http.ResponseWriter, r *http.Request) {
