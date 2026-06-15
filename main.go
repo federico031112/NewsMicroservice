@@ -57,9 +57,52 @@ func main() {
 	mux.HandleFunc("POST /api/notizie", env.addNews)
 	mux.HandleFunc("GET /api/notizie/titolo/{titolo}", env.getNewsByTitolo)
 	mux.HandleFunc("GET /api/notizie/tipologia/{tipologia}", env.getNewsByTipologia)
+	mux.HandleFunc("GET /api/notizie/comune/{comune}", env.getNewsByComune)
 
 	fmt.Printf("Identity Service (HTTP) pronto sulla porta %s\n", Port)
 	log.Fatal(http.ListenAndServe(Port, mux))
+}
+
+func (env *Env) getNewsByComune(w http.ResponseWriter, r *http.Request) {
+	comune := r.PathValue("comune")
+	if comune == "" {
+		http.Error(w, "Comune mancante nell'URL", http.StatusBadRequest)
+		return
+	}
+
+	query := "SELECT * FROM notizie WHERE comune = $1"
+	rows, err := env.db.Query(query, comune)
+	if err != nil {
+		http.Error(w, "Errore interno del database", http.StatusInternalServerError)
+		return
+	}
+
+	defer rows.Close()
+
+	notizie := make([]Notizia, 0)
+
+	for rows.Next() {
+		var news Notizia
+
+		err := rows.Scan(&news.Comune, &news.Contenuto, &news.Data, &news.Giornale, &news.Tipologia, &news.Titolo)
+
+		if err != nil {
+			http.Error(w, "Errore nel database", http.StatusInternalServerError)
+			return
+		}
+
+		notizie = append(notizie, news)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		http.Error(w, "Errore interno del database", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(notizie)
 }
 
 func (env *Env) getNewsByTipologia(w http.ResponseWriter, r *http.Request) {
