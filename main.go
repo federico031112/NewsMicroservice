@@ -156,7 +156,7 @@ func (env *Env) getNewsByTitolo(w http.ResponseWriter, r *http.Request) {
 	query := "SELECT * FROM notizie WHERE titolo = $1"
 
 	var news Notizia
-	err := env.db.QueryRow(query, titolo).Scan(&news) //qui devo sistemare il contenuto di scan mappando ogni campo di news con le relative colonne in ordine
+	err := env.db.QueryRow(query, titolo).Scan(&news.Comune, &news.Contenuto, &news.Data, &news.Giornale, &news.Tipologia, &news.Titolo) //qui devo sistemare il contenuto di scan mappando ogni campo di news con le relative colonne in ordine
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Notizia non trovata", http.StatusNotFound) // 404
@@ -223,9 +223,9 @@ func (env *Env) addNews(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	insertQuery := `INSERT INTO notizie (titolo, contenuto, comune_id) VALUES ($1, $2, $3) RETURNING id`
+	insertQuery := `INSERT INTO notizie (giornale, titolo, comune, contenuto, tipologia, data) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`
 
-	err = env.db.QueryRow(insertQuery, req.Titolo, req.Contenuto, req.Comune).Scan(&req.Comune)
+	err = env.db.QueryRow(insertQuery, req.Giornale, req.Titolo, req.Comune, req.Contenuto, req.Tipologia, req.Data).Scan(&req.Comune)
 	if err != nil {
 		http.Error(w, "Errore durante il salvataggio della notizia", http.StatusInternalServerError)
 		return
