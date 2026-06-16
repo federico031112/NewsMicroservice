@@ -25,12 +25,12 @@ type Comune struct {
 }
 
 type Notizia struct {
-	Giornale  string `json:"giornale"`
-	Titolo    string `json:"titolo"`
-	Comune    string `json:"comune"`
-	Contenuto string `json:"contenuto"`
-	Tipologia string `json:"tipologia"`
-	Data      string `json:"data"`
+	Giornale           string `json:"giornale"`
+	Titolo             string `json:"titolo"`
+	Comune             string `json:"comune"`
+	Contenuto          string `json:"contenuto"`
+	Tipologia          string `json:"tipologia"`
+	Data_pubblicazione string `json:"data_pubblicazione"`
 }
 
 type Env struct {
@@ -58,9 +58,56 @@ func main() {
 	mux.HandleFunc("GET /api/notizie/titolo/{titolo}", env.getNewsByTitolo)
 	mux.HandleFunc("GET /api/notizie/tipologia/{tipologia}", env.getNewsByTipologia)
 	mux.HandleFunc("GET /api/notizie/comune/{comune}", env.getNewsByComune)
+	mux.HandleFunc("POST /api/comuni", env.insertComune)
 
 	fmt.Printf("Identity Service (HTTP) pronto sulla porta %s\n", Port)
 	log.Fatal(http.ListenAndServe(Port, mux))
+}
+
+func (env *Env) insertComune(w http.ResponseWriter, r *http.Request) {
+	auth := r.Header.Get("Authorization")
+
+	if auth == "" {
+		http.Error(w, "Token mancante", http.StatusBadRequest)
+		return
+	}
+
+	if !strings.HasPrefix(auth, "Bearer ") {
+		http.Error(w, "Token non valido", http.StatusBadRequest)
+		return
+	}
+
+	tokenstr := auth[7:]
+	claims := &CustomClaims{}
+
+	token, err := jwt.ParseWithClaims(tokenstr, claims, func(token *jwt.Token) (interface{}, error) { return jwtKey, nil })
+
+	if err != nil || !token.Valid {
+		http.Error(w, "Token non valido", http.StatusBadRequest)
+		return
+	}
+
+	if claims.Role != "admin" {
+		http.Error(w, "Permessi insufficienti", http.StatusForbidden)
+		return
+	}
+
+	var comune Comune
+	if err := json.NewDecoder(r.Body).Decode(&comune); err != nil {
+		http.Error(w, "JSON non valido", http.StatusBadRequest)
+		return
+	}
+
+	query := "INSERT INTO comuni (nome, abitanti) VALUES ($1, $2)"
+	err = env.db.QueryRow(query, comune.Nome, comune.Abitanti).Scan(&comune.Nome)
+	if err != nil {
+		http.Error(w, "errore nel salvataggio dei dati", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(comune)
 }
 
 func (env *Env) getNewsByComune(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +131,7 @@ func (env *Env) getNewsByComune(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var news Notizia
 
-		err := rows.Scan(&news.Comune, &news.Contenuto, &news.Data, &news.Giornale, &news.Tipologia, &news.Titolo)
+		err := rows.Scan(&news.Comune, &news.Contenuto, &news.Data_pubblicazione, &news.Giornale, &news.Tipologia, &news.Titolo)
 
 		if err != nil {
 			http.Error(w, "Errore nel database", http.StatusInternalServerError)
@@ -125,7 +172,7 @@ func (env *Env) getNewsByTipologia(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var news Notizia
-		err := rows.Scan(&news.Comune, &news.Contenuto, &news.Data, &news.Giornale, &news.Tipologia, &news.Titolo)
+		err := rows.Scan(&news.Comune, &news.Contenuto, &news.Data_pubblicazione, &news.Giornale, &news.Tipologia, &news.Titolo)
 		if err != nil {
 			http.Error(w, "Errore durante la lettura dei dati", http.StatusInternalServerError)
 			return
@@ -156,7 +203,7 @@ func (env *Env) getNewsByTitolo(w http.ResponseWriter, r *http.Request) {
 	query := "SELECT * FROM notizie WHERE titolo = $1"
 
 	var news Notizia
-	err := env.db.QueryRow(query, titolo).Scan(&news.Comune, &news.Contenuto, &news.Data, &news.Giornale, &news.Tipologia, &news.Titolo) //qui devo sistemare il contenuto di scan mappando ogni campo di news con le relative colonne in ordine
+	err := env.db.QueryRow(query, titolo).Scan(&news.Comune, &news.Contenuto, &news.Data_pubblicazione, &news.Giornale, &news.Tipologia, &news.Titolo) //qui devo sistemare il contenuto di scan mappando ogni campo di news con le relative colonne in ordine
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Notizia non trovata", http.StatusNotFound) // 404
@@ -225,7 +272,7 @@ func (env *Env) addNews(w http.ResponseWriter, r *http.Request) {
 
 	insertQuery := `INSERT INTO notizie (giornale, titolo, comune, contenuto, tipologia, data) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`
 
-	err = env.db.QueryRow(insertQuery, req.Giornale, req.Titolo, req.Comune, req.Contenuto, req.Tipologia, req.Data).Scan(&req.Comune)
+	err = env.db.QueryRow(insertQuery, req.Giornale, req.Titolo, req.Comune, req.Contenuto, req.Tipologia, req.Data_pubblicazione).Scan(&req.Comune)
 	if err != nil {
 		http.Error(w, "Errore durante il salvataggio della notizia", http.StatusInternalServerError)
 		return
